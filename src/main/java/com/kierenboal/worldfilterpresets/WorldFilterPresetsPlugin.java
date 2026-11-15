@@ -541,8 +541,8 @@ public class WorldFilterPresetsPlugin extends Plugin
 	{
 		try
 		{
-			client.createScriptEventBuilder(args).setSource(widget).setOp(op).build()
-				.setCanSendPackets(false).run();
+			// Replayed listeners must work under RuneLite's default packet restrictions.
+			client.createScriptEventBuilder(args).setSource(widget).setOp(op).build().run();
 		}
 		finally
 		{
