@@ -17,7 +17,7 @@ public class PresetCogMenuTest
 	@Test
 	public void selectedPresetIsHighlightedWhenMenuIsOpened() throws Exception
 	{
-		PresetRepository state = new PresetRepository(new PresetCodec(), null, value -> { });
+		PresetRepository state = new PresetRepository(PresetTestSupport.codec(), null, value -> { });
 		Preset preset = state.add("A", new int[11]);
 		state.select(PresetRepository.CLIENT);
 		assertEquals("<col=ffff00>In-game filter*</col>", populate(state).target("In-game filter"));
@@ -32,7 +32,7 @@ public class PresetCogMenuTest
 	@Test
 	public void cogIncludesBuiltInsAndVisibleCustomsInSharedOrderAlongsideConfigure() throws Exception
 	{
-		PresetRepository state = new PresetRepository(new PresetCodec(), null, value -> { });
+		PresetRepository state = new PresetRepository(PresetTestSupport.codec(), null, value -> { });
 		Preset a = state.add("A", new int[11]);
 		Preset b = state.add("B", new int[11]);
 		state.move(b.id, -1, false, false);
@@ -46,7 +46,7 @@ public class PresetCogMenuTest
 	@Test
 	public void moreThanFiveHundredPresetsRemainReachableThroughBoundedSubmenus() throws Exception
 	{
-		PresetRepository state = new PresetRepository(new PresetCodec(), null, value -> { });
+		PresetRepository state = new PresetRepository(PresetTestSupport.codec(), null, value -> { });
 		Preset seed = state.add("Seed", new int[11]);
 		List<Preset> imported = new ArrayList<>();
 		for (int i = 0; i < 500; i++) { imported.add(seed.withName("Preset " + i)); }
@@ -68,7 +68,7 @@ public class PresetCogMenuTest
 	@Test
 	public void hidingCogPresetsLeavesNativeMenuAndPerPresetPreferencesIntact() throws Exception
 	{
-		PresetRepository state = new PresetRepository(new PresetCodec(), null, value -> { });
+		PresetRepository state = new PresetRepository(PresetTestSupport.codec(), null, value -> { });
 		Preset preset = state.add("A", new int[11]);
 		assertFalse(new WorldFilterPresetsConfig() { }.hideCogPresetMenu());
 		M hidden = populate(state, new WorldFilterPresetsConfig()

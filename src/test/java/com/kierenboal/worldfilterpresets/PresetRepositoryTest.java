@@ -8,7 +8,7 @@ import static org.junit.Assert.*;
 
 public class PresetRepositoryTest
 {
-	private final PresetCodec codec = new PresetCodec();
+	private final PresetCodec codec = PresetTestSupport.codec();
 	private final List<String> writes = new ArrayList<>();
 	private PresetRepository state() { return new PresetRepository(codec, null, writes::add); }
 

@@ -22,7 +22,7 @@ public class PresetTickSelectionTest
 		Client client = (Client) Proxy.newProxyInstance(Client.class.getClassLoader(), new Class<?>[]{Client.class},
 			(object, method, args) -> { if (method.getName().equals("playSoundEffect")) { sounds.add((int) args[0]); } return null; });
 		WorldFilterPresetsPlugin plugin = new WorldFilterPresetsPlugin();
-		PresetRepository repository = new PresetRepository(new PresetCodec(), null, value -> { });
+		PresetRepository repository = new PresetRepository(PresetTestSupport.codec(), null, value -> { });
 		set(plugin, "client", client); set(plugin, "repository", repository);
 		set(plugin, "running", true); set(plugin, "supported", true);
 		Method select = WorldFilterPresetsPlugin.class.getDeclaredMethod("select", String.class);

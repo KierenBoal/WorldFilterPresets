@@ -46,7 +46,7 @@ public class PresetPromptsTest
 	@Test
 	public void bulkDeleteRequiresIndependentSecondTicketWithReversedButtons()
 	{
-		PresetRepository repository = new PresetRepository(new PresetCodec(), null, value -> { });
+		PresetRepository repository = new PresetRepository(PresetTestSupport.codec(), null, value -> { });
 		repository.add("Keep until both confirmations", new int[11]);
 		PresetPrompts prompts = new PresetPrompts();
 		assertArrayEquals(new String[]{"Yes", "No"}, PresetPrompts.confirmationOptions(false));

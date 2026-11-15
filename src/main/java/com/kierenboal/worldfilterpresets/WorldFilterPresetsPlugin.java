@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.List;
 import java.util.Collections;
 import java.util.ArrayList;
+import com.google.gson.Gson;
 import com.google.inject.Provides;
 import net.runelite.api.ChatMessageType;
 import net.runelite.client.events.ConfigChanged;
@@ -62,6 +63,7 @@ public class WorldFilterPresetsPlugin extends Plugin
 	};
 
 	@Inject private Client client;
+	@Inject private Gson gson;
 	@Inject private ClientThread clientThread;
 	@Inject private ConfigManager config;
 	@Inject private ChatboxPanelManager chatbox;
@@ -70,7 +72,7 @@ public class WorldFilterPresetsPlugin extends Plugin
 	@Inject private WorldFilterPresetsConfig settings;
 	@Inject private KeyManager keyManager;
 	@Inject private TooltipManager tooltipManager;
-	private final PresetCodec codec = new PresetCodec();
+	private PresetCodec codec;
 	private final PresetClipboard clipboard = new PresetClipboard();
 	private final PresetPrompts prompts = new PresetPrompts();
 	private final List<Runnable> nextTickActions = new ArrayList<>();
@@ -112,6 +114,7 @@ public class WorldFilterPresetsPlugin extends Plugin
 	@Override
 	protected void startUp()
 	{
+		codec = new PresetCodec(gson);
 		running = true;
 		keyManager.registerKeyListener(escapeListener);
 		clientThread.invokeLater(() ->

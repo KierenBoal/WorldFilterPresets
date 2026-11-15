@@ -32,7 +32,7 @@ public class PresetInGamePreviewTest
 				}
 			});
 		WorldFilterPresetsPlugin plugin = new WorldFilterPresetsPlugin();
-		PresetRepository repository = new PresetRepository(new PresetCodec(), null, ignored -> { });
+		PresetRepository repository = new PresetRepository(PresetTestSupport.codec(), null, ignored -> { });
 		Preset preset = repository.add("A", new int[11]);
 		set(plugin, "client", client); set(plugin, "repository", repository);
 		set(plugin, "running", true); set(plugin, "supported", true);

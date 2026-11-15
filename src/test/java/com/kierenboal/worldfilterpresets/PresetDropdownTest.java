@@ -18,7 +18,7 @@ import static org.junit.Assert.*;
 public class PresetDropdownTest
 {
 	private final Surface surface = new Surface();
-	private final PresetRepository repository = new PresetRepository(new PresetCodec(), null, value -> { });
+	private final PresetRepository repository = new PresetRepository(PresetTestSupport.codec(), null, value -> { });
 	private final List<Integer> bulk = new ArrayList<>();
 	private final List<String> selected = new ArrayList<>();
 	private final List<Integer> managed = new ArrayList<>();

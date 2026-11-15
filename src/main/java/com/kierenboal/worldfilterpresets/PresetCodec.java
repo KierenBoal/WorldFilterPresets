@@ -16,8 +16,8 @@ import java.util.UUID;
 /** Version 1 is additive: retain unknown preset/filter fields when editing known fields. */
 final class PresetCodec
 {
-	private static final Gson JSON = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
-	private static final Gson COMPACT_JSON = new GsonBuilder().disableHtmlEscaping().create();
+	private final Gson json;
+	private final Gson compactJson;
 	private static final String FORMAT = "world-filter-presets";
 	private static final String EXPORT_VERSION = "wfp-1";
 	private static final String[] MASK_NAMES = {"member", "country", "theme"};
@@ -25,7 +25,13 @@ final class PresetCodec
 	// Position 5 deliberately uses legacy varc 212, NOT varc 1162.
 	static final int SEARCH_LENGTH = 8;
 
-	String export(List<Preset> presets) { return COMPACT_JSON.toJson(envelope(presets, false)); }
+	PresetCodec(Gson gson)
+	{
+		json = gson.newBuilder().setPrettyPrinting().disableHtmlEscaping().create();
+		compactJson = gson.newBuilder().disableHtmlEscaping().create();
+	}
+
+	String export(List<Preset> presets) { return compactJson.toJson(envelope(presets, false)); }
 
 	boolean sameContent(Preset first, Preset second)
 	{
@@ -41,9 +47,9 @@ final class PresetCodec
 	{
 		JsonObject root = envelope(presets, true);
 		if (!PresetRepository.CLIENT.equals(selected)) { root.addProperty("selected", selected); }
-		if (!order.isEmpty()) { root.add("order", JSON.toJsonTree(order)); }
-		if (!hiddenFromCog.isEmpty()) { root.add("hiddenFromCog", JSON.toJsonTree(hiddenFromCog)); }
-		return JSON.toJson(root);
+		if (!order.isEmpty()) { root.add("order", json.toJsonTree(order)); }
+		if (!hiddenFromCog.isEmpty()) { root.add("hiddenFromCog", json.toJsonTree(hiddenFromCog)); }
+		return json.toJson(root);
 	}
 
 	List<Preset> importPresets(String text)

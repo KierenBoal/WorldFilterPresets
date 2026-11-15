@@ -9,7 +9,7 @@ import static org.junit.Assert.*;
 
 public class PresetCodecTest
 {
-	private final PresetCodec codec = new PresetCodec();
+	private final PresetCodec codec = PresetTestSupport.codec();
 	private String wrap(String presets)
 	{
 		return "{\"v\":\"wfp-1\",\"presets\":" + presets + "}";
