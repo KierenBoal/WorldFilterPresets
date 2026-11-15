@@ -22,10 +22,14 @@ final class PresetDropdown
 		void add();
 		void manage(String id, int op);
 		void bulk(int op);
+		void nextTick(Runnable action);
 	}
 
 	private static final int TARGET_WIDTH = 210;
-	private static final int ROW_HEIGHT = 16;
+	private static final String HEADER_TITLE = "World Switcher/Filter Config";
+	private static final int ROW_HEIGHT = 18;
+	private static final int SUBMENU_ROW_HEIGHT = 16;
+	private static final String[] CUSTOM_ACTIONS = {"Update with current filters", "Rename", "Change icon", "Remove icon", "Export to clipboard", "Delete"};
 	private final PresetLabelMarquee marquee = new PresetLabelMarquee();
 	private String selectedName = "";
 	private final Client client;
@@ -41,6 +45,7 @@ final class PresetDropdown
 	private final Actions actions;
 	private final List<Widget> header = new ArrayList<>();
 	private final List<Widget> popup = new ArrayList<>();
+	private final List<Widget> submenu = new ArrayList<>();
 	private final List<Row> rows = new ArrayList<>();
 	private final List<Hover> hovers = new ArrayList<>();
 	private Widget button;
@@ -54,10 +59,14 @@ final class PresetDropdown
 	private boolean hideClient;
 	private boolean hideNone;
 	private volatile boolean open;
+	private boolean opening;
+	private boolean holdOpen;
 	private boolean removed;
 	private int offset;
 	private int visibleRows;
 	private Rectangle popupBounds;
+	private Rectangle submenuBounds;
+	private Hover hoveredRow;
 	private Rectangle lastAnchor;
 	private Rectangle lastRoot;
 	private long lastPress;
@@ -80,14 +89,23 @@ final class PresetDropdown
 		buttonWidth = TARGET_WIDTH;
 		button = rectangle(frame, header, 7, 7, buttonWidth, 21, 0x73664e);
 		buttonFace = rectangle(frame, header, 8, 8, buttonWidth - 2, 19, 0x3e382b);
-		button.setName("World presets");
+		button.setName("");
 		button.setNoClickThrough(true);
 		button.setHasListener(true);
 		button.setOnOpListener((JavaScriptCallback) event ->
 		{
 			if (!alive()) { return; }
 			int op = event.getOp();
-			if (op == 1) { if (open) { close(); } else { expand(); } }
+			if (op == 1)
+			{
+				client.playSoundEffect(2266);
+				if (open || opening) { close(); }
+				else
+				{
+					opening = true;
+					actions.nextTick(() -> { if (opening && alive()) { opening = false; expand(); } });
+				}
+			}
 			else { close(); actions.bulk(op); }
 		});
 		button.setOnMouseOverListener((JavaScriptCallback) event -> buttonFace.setTextColor(0x514830));
@@ -121,8 +139,7 @@ final class PresetDropdown
 		caption.setOriginalX(icon >= 0 ? 38 : 15).setOriginalWidth(icon >= 0 ? buttonWidth - 59 : buttonWidth - 36).revalidate();
 		selectedName = name;
 		updateCaption();
-		button.setName(Text.escapeJagex(name));
-		button.setAction(0, open ? "Close presets" : "Choose preset");
+		button.setAction(0, open ? "Close presets" : "Open presets");
 		button.setAction(1, "Import from clipboard");
 		button.setAction(2, repository.presets().isEmpty() ? null : "Export all presets");
 		button.setAction(3, repository.presets().isEmpty() ? null : "Delete all presets");
@@ -133,14 +150,14 @@ final class PresetDropdown
 	private void layoutHeader()
 	{
 		lastFrameWidth = frame.getWidth();
-		int textWidth = title != null && title.getFont() != null ? title.getFont().getTextWidth("World filters") : 95;
+		int textWidth = title != null && title.getFont() != null ? title.getFont().getTextWidth(HEADER_TITLE) : 165;
 		buttonWidth = PresetDropdownLayout.headerWidth(frame.getWidth(), textWidth);
 		button.setOriginalWidth(buttonWidth).revalidate();
 		buttonFace.setOriginalWidth(buttonWidth - 2).revalidate();
 		arrow.setOriginalX(7 + buttonWidth - 21).revalidate();
 		if (title != null)
 		{
-			title.setText("World filters").setXPositionMode(0).setWidthMode(0)
+			title.setText(HEADER_TITLE).setXPositionMode(0).setWidthMode(0)
 				.setOriginalX(7 + buttonWidth + 10).setOriginalWidth(Math.max(0, frame.getWidth() - 36 - (7 + buttonWidth + 10)))
 				.setXTextAlignment(WidgetTextAlignment.CENTER).revalidate();
 		}
@@ -158,7 +175,7 @@ final class PresetDropdown
 
 	private void expand()
 	{
-		if (root == null || root.isHidden() || repository == null) { return; }
+		if (root == null || root.isHidden() || frame.isHidden() || repository == null) { return; }
 		open = true;
 		offset = 0;
 		lastPress = client.getMouseLastPressedMillis();
@@ -172,6 +189,7 @@ final class PresetDropdown
 
 	private void drawPopup()
 	{
+		closeSubmenu();
 		deleteWidgets(root, popup);
 		hovers.clear();
 		Rectangle anchor = button.getBounds();
@@ -207,34 +225,36 @@ final class PresetDropdown
 			Widget target = rectangle(root, popup, localX + 1, rowY + 1, rowWidth - 1, ROW_HEIGHT - 1,
 				row.id.equals(repository.selected()) ? 0x514830 : 0x302b22);
 			target.setNoClickThrough(true);
-			target.setName(Text.escapeJagex(row.name));
-			target.setAction(0, "Load preset");
+			target.setName("<col=ffff00>" + Text.escapeJagex(row.name) + "</col>");
+			target.setAction(0, "Use");
 			if (row.custom)
 			{
-				String[] options = {"Save current filters", "Rename", "Change icon", "Remove icon", "Export", "Delete"};
-				for (int j = 0; j < options.length; j++) { target.setAction(j + 1, options[j]); }
+				for (int j = 0; j < CUSTOM_ACTIONS.length; j++) { target.setAction(j + 1, CUSTOM_ACTIONS[j]); }
 			}
 			target.setAction(7, repository.canMove(row.id, -1, hideClient, hideNone) ? "Move up" : null);
 			target.setAction(8, repository.canMove(row.id, 1, hideClient, hideNone) ? "Move down" : null);
 			target.setAction(9, "Show in cog menu: " + (repository.showInCogMenu(row.id) ? "<col=00ff00>On</col>" : "Off"));
 			target.setHasListener(true);
 			int baseColor = row.id.equals(repository.selected()) ? 0x514830 : 0x302b22;
-			target.setOnMouseOverListener((JavaScriptCallback) event -> target.setTextColor(0x625539));
-			target.setOnMouseLeaveListener((JavaScriptCallback) event -> target.setTextColor(baseColor));
+			target.setOnMouseOverListener((JavaScriptCallback) event ->
+			{
+				target.setTextColor(0x625539);
+				if (submenuBounds != null && hoveredRow != null && hoveredRow.widget != target) { hoverOpenRow(target); }
+			});
+			target.setOnMouseLeaveListener((JavaScriptCallback) event ->
+				target.setTextColor(submenuBounds != null && hoveredRow != null && hoveredRow.widget == target ? 0x625539 : baseColor));
 			target.setOnOpListener((JavaScriptCallback) event ->
 			{
 				if (!alive() || !open || !popup.contains(target)) { return; }
-				if (event.getOp() >= 8) { actions.manage(row.id, event.getOp()); return; }
-				close();
-				if (event.getOp() == 1) { actions.select(row.id); }
-				else { actions.manage(row.id, event.getOp()); }
+				activate(row, event.getOp());
 			});
 			wheel(target);
 			boolean hasIcon = validIcon(row.icon);
-			if (hasIcon) { PresetItemIcons.configure(child(root, popup, WidgetType.GRAPHIC, localX + 5, rowY + 2, 13, 12), row.icon, 12); }
-			Widget label = text(root, popup, localX + (hasIcon ? 22 : 5), rowY, rowWidth - (hasIcon ? 26 : 9), ROW_HEIGHT, "");
-			label.setText(ellipsize(label, row.name));
-			hovers.add(new Hover(target, row.name));
+			if (hasIcon) { PresetItemIcons.configure(child(root, popup, WidgetType.GRAPHIC, localX + 5, rowY + 3, 13, 12), row.icon, 12); }
+			Widget label = text(root, popup, localX + (hasIcon ? 22 : 5), rowY, rowWidth - (hasIcon ? 40 : 23), ROW_HEIGHT, "");
+			label.setText(row.id.equals(repository.selected()) ? selectedLabel(label, row.name) : ellipsize(label, row.name));
+			text(root, popup, localX + rowWidth - 13, rowY, 12, ROW_HEIGHT, ">");
+			hovers.add(new Hover(target, row));
 		}
 		int addY = localY + visibleRows * ROW_HEIGHT;
 		Widget add = rectangle(root, popup, localX + 1, addY, width - 2, ROW_HEIGHT - 1, 0x302b22);
@@ -262,6 +282,122 @@ final class PresetDropdown
 			scrollButton(sx, localY, -1);
 			scrollButton(sx, localY + visibleRows * ROW_HEIGHT - 16, 1);
 		}
+	}
+
+	private void activate(Row row, int op)
+	{
+		if (op == 4 || op == 5 || op == 8 || op == 9)
+		{
+			lastPress = client.getMouseLastPressedMillis();
+			actions.manage(row.id, op);
+			return;
+		}
+		if (op >= 8) { actions.manage(row.id, op); return; }
+		close();
+		if (op == 1) { actions.select(row.id); }
+		else { actions.manage(row.id, op); }
+	}
+
+	private void hoverOpenRow(Widget target)
+	{
+		if (!open || !alive() || client.isMenuOpen()) { return; }
+		for (Hover hover : hovers)
+		{
+			if (hover.widget == target)
+			{
+				closeSubmenu();
+				hoveredRow = hover;
+				drawSubmenu(hover);
+				return;
+			}
+		}
+	}
+
+	/** Called on game ticks, keeping the submenu open while crossing into it. */
+	void gameTick()
+	{
+		if (!open || !alive() || client.isMenuOpen()) { return; }
+		net.runelite.api.Point point = client.getMouseCanvasPosition();
+		if (submenuBounds != null && submenuBounds.contains(point.getX(), point.getY())) { return; }
+		Hover over = null;
+		for (Hover hover : hovers) { if (hover.widget.contains(point)) { over = hover; break; } }
+		if (over != null && over != hoveredRow)
+		{
+			closeSubmenu();
+			hoveredRow = over;
+			drawSubmenu(over);
+			return;
+		}
+		if (submenuBounds != null && hoveredRow != null)
+		{
+			Rectangle buffer = new Rectangle(submenuBounds);
+			buffer.grow((int) Math.ceil(buffer.width * 0.2), (int) Math.ceil(buffer.height * 0.2));
+			if (buffer.contains(point.getX(), point.getY())) { return; }
+			Rectangle anchor = hoveredRow.widget.getBounds();
+			int left = Math.min(anchor.x, submenuBounds.x);
+			int right = Math.max(anchor.x + anchor.width, submenuBounds.x + submenuBounds.width);
+			if (point.getY() >= anchor.y && point.getY() < anchor.y + anchor.height
+				&& point.getX() >= left && point.getX() < right) { return; }
+		}
+		if (over == null) { closeSubmenu(); }
+	}
+
+	private void drawSubmenu(Hover hover)
+	{
+		hover.widget.setTextColor(0x625539);
+		Row row = hover.row;
+		List<String> labels = new ArrayList<>();
+		List<Integer> ops = new ArrayList<>();
+		labels.add("Use"); ops.add(1);
+		if (row.custom)
+		{
+			for (int i = 0; i < CUSTOM_ACTIONS.length; i++) { labels.add(CUSTOM_ACTIONS[i]); ops.add(i + 2); }
+		}
+		if (repository.canMove(row.id, -1, hideClient, hideNone)) { labels.add("Move up"); ops.add(8); }
+		if (repository.canMove(row.id, 1, hideClient, hideNone)) { labels.add("Move down"); ops.add(9); }
+		labels.add("Show in cog menu: " + (repository.showInCogMenu(row.id) ? "<col=00ff00>On</col>" : "Off")); ops.add(10);
+		Rectangle bounds = lastRoot;
+		Rectangle anchor = hover.widget.getBounds();
+		int right = bounds.x + bounds.width - (popupBounds.x + popupBounds.width);
+		int left = popupBounds.x - bounds.x;
+		boolean toRight = right >= 180 || right >= left;
+		int width = Math.min(180, Math.max(1, toRight ? right : left));
+		int height = labels.size() * SUBMENU_ROW_HEIGHT + 2;
+		int x = toRight ? popupBounds.x + popupBounds.width : popupBounds.x - width;
+		int y = Math.max(bounds.y, Math.min(anchor.y, bounds.y + bounds.height - height));
+		submenuBounds = new Rectangle(x, y, width, height);
+		int localX = x - root.getCanvasLocation().getX();
+		int localY = y - root.getCanvasLocation().getY();
+		Widget background = rectangle(root, submenu, localX, localY, width, height, 0x73664e);
+		background.setNoClickThrough(true);
+		rectangle(root, submenu, localX + 1, localY + 1, width - 2, height - 2, 0x302b22);
+		for (int i = 0; i < labels.size(); i++)
+		{
+			int op = ops.get(i);
+			int rowY = localY + 1 + i * SUBMENU_ROW_HEIGHT;
+			Widget target = rectangle(root, submenu, localX + 1, rowY, width - 2, SUBMENU_ROW_HEIGHT, 0x302b22);
+			target.setNoClickThrough(true);
+			target.setAction(0, labels.get(i));
+			target.setHasListener(true);
+			target.setOnMouseOverListener((JavaScriptCallback) event -> target.setTextColor(0x625539));
+			target.setOnMouseLeaveListener((JavaScriptCallback) event -> target.setTextColor(0x302b22));
+			target.setOnOpListener((JavaScriptCallback) event ->
+			{
+				if (alive() && open && submenu.contains(target)) { activate(row, op); }
+			});
+			text(root, submenu, localX + 5, rowY, width - 10, SUBMENU_ROW_HEIGHT, labels.get(i));
+		}
+	}
+
+	private void closeSubmenu()
+	{
+		if (hoveredRow != null)
+		{
+			hoveredRow.widget.setTextColor(hoveredRow.row.id.equals(repository.selected()) ? 0x514830 : 0x302b22);
+		}
+		deleteWidgets(root, submenu);
+		submenuBounds = null;
+		hoveredRow = null;
 	}
 
 	private void scrollButton(int x, int y, int delta)
@@ -295,11 +431,13 @@ final class PresetDropdown
 		updateCaption();
 		if (!open) { return; }
 		long press = client.getMouseLastPressedMillis();
+		if (holdOpen) { lastPress = press; }
 		if (press != lastPress)
 		{
 			lastPress = press;
 			net.runelite.api.Point point = client.getMouseCanvasPosition();
-			if (!client.isMenuOpen() && !popupBounds.contains(point.getX(), point.getY()) && !button.contains(point)) { close(); }
+			if (!client.isMenuOpen() && !popupBounds.contains(point.getX(), point.getY())
+				&& (submenuBounds == null || !submenuBounds.contains(point.getX(), point.getY())) && !button.contains(point)) { close(); }
 		}
 		// Reanchor after a native resize, without rebuilding rows on every client tick.
 		Rectangle anchor = button.getBounds();
@@ -326,18 +464,24 @@ final class PresetDropdown
 		{
 			for (Hover hover : hovers)
 			{
-				if (hover.widget.contains(point)) { manager.add(new Tooltip(Text.escapeJagex(hover.name))); break; }
+				if (hover.widget.contains(point)) { manager.add(new Tooltip(Text.escapeJagex(hover.row.name))); break; }
 			}
 		}
 	}
 
 	void close()
 	{
+		holdOpen = false;
+		opening = false;
 		open = false;
+		closeSubmenu();
 		deleteWidgets(root, popup);
 		hovers.clear();
 		if (!removed && repository != null && alive()) { update(repository, hideClient, hideNone); }
 	}
+
+	void holdOpen() { holdOpen = true; }
+	void releaseOpen() { holdOpen = false; lastPress = client.getMouseLastPressedMillis(); }
 
 	void remove()
 	{
@@ -385,6 +529,13 @@ final class PresetDropdown
 			: PresetLabelMarquee.ellipsize(value, widget.getWidth(), widget.getFont()::getTextWidth);
 	}
 
+	private static String selectedLabel(Widget widget, String value)
+	{
+		if (widget.getFont() == null) { return Text.escapeJagex(value) + "*"; }
+		return PresetLabelMarquee.ellipsize(value, Math.max(0, widget.getWidth() - widget.getFont().getTextWidth("*")),
+			widget.getFont()::getTextWidth) + "*";
+	}
+
 	private static void deleteWidgets(Widget parent, List<Widget> owned)
 	{
 		Widget[] children = parent == null ? null : parent.getChildren();
@@ -409,7 +560,7 @@ final class PresetDropdown
 	private static final class Hover
 	{
 		final Widget widget;
-		final String name;
-		Hover(Widget widget, String name) { this.widget = widget; this.name = name; }
+		final Row row;
+		Hover(Widget widget, Row row) { this.widget = widget; this.row = row; }
 	}
 }

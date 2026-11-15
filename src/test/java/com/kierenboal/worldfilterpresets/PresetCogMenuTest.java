@@ -8,11 +8,27 @@ import net.runelite.api.Menu;
 import net.runelite.api.MenuEntry;
 import net.runelite.api.events.MenuOpened;
 import net.runelite.api.gameval.InterfaceID;
+import net.runelite.client.util.Text;
 import org.junit.Test;
 import static org.junit.Assert.*;
 
 public class PresetCogMenuTest
 {
+	@Test
+	public void selectedPresetIsHighlightedWhenMenuIsOpened() throws Exception
+	{
+		PresetRepository state = new PresetRepository(new PresetCodec(), null, value -> { });
+		Preset preset = state.add("A", new int[11]);
+		state.select(PresetRepository.CLIENT);
+		assertEquals("<col=ffff00>In-game filter*</col>", populate(state).target("In-game filter"));
+		state.select(preset.id);
+		M menu = populate(state);
+		assertEquals("<col=ffff00>A*</col>", menu.target("A"));
+		assertEquals("In-game filter", menu.target("In-game filter"));
+		state.select(PresetRepository.NONE);
+		assertEquals("<col=ffff00>No filters*</col>", populate(state).target("No filters"));
+	}
+
 	@Test
 	public void cogIncludesBuiltInsAndVisibleCustomsInSharedOrderAlongsideConfigure() throws Exception
 	{
@@ -122,10 +138,29 @@ public class PresetCogMenuTest
 			for (int i = entries.size() - 1; i >= 0; i--)
 			{
 				MenuEntry entry = entries.get(i);
-				if ("Load preset".equals(entry.getOption())) { result.add(entry.getTarget()); }
+				if ("Use".equals(entry.getOption())) { result.add(presetName(entry.getTarget())); }
 				if (submenus.containsKey(entry)) { result.addAll(submenus.get(entry).targets()); }
 			}
 			return result;
+		}
+		String target(String name)
+		{
+			for (MenuEntry entry : entries)
+			{
+				if ("Use".equals(entry.getOption()) && name.equals(presetName(entry.getTarget())))
+				{ return entry.getTarget(); }
+				if (submenus.containsKey(entry))
+				{
+					String result = submenus.get(entry).target(name);
+					if (result != null) { return result; }
+				}
+			}
+			return null;
+		}
+		private String presetName(String target)
+		{
+			String name = Text.removeTags(target);
+			return target.startsWith("<col=ffff00>") ? name.substring(0, name.length() - 1) : name;
 		}
 	}
 }

@@ -5,6 +5,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.List;
 import java.util.Collections;
+import java.util.ArrayList;
 import com.google.inject.Provides;
 import net.runelite.api.ChatMessageType;
 import net.runelite.client.events.ConfigChanged;
@@ -72,6 +73,7 @@ public class WorldFilterPresetsPlugin extends Plugin
 	private final PresetCodec codec = new PresetCodec();
 	private final PresetClipboard clipboard = new PresetClipboard();
 	private final PresetPrompts prompts = new PresetPrompts();
+	private final List<Runnable> nextTickActions = new ArrayList<>();
 	private PresetRepository repository;
 	private volatile PresetDropdown dropdown;
 	private final KeyListener escapeListener = new KeyListener()
@@ -91,6 +93,9 @@ public class WorldFilterPresetsPlugin extends Plugin
 	private volatile boolean running;
 	private boolean supported;
 	private boolean refreshQueued;
+	private boolean previewingInGameFilters;
+	private long previewTicket;
+	private int selectionRequest;
 	private volatile int session;
 	// Unlike prompt sessions, startup notifications survive the initial LOGIN_SCREEN transition.
 	private volatile int messageSession;
@@ -156,6 +161,8 @@ public class WorldFilterPresetsPlugin extends Plugin
 
 	private void reset()
 	{
+		previewingInGameFilters = false;
+		nextTickActions.clear();
 		messageSession++;
 		prompts.invalidate();
 		removeHeader();
@@ -178,6 +185,8 @@ public class WorldFilterPresetsPlugin extends Plugin
 	{
 		if (event.getGameState() == GameState.LOGIN_SCREEN)
 		{
+			previewingInGameFilters = false;
+			nextTickActions.clear();
 			prompts.invalidate();
 			session++;
 			removeHeader();
@@ -218,8 +227,28 @@ public class WorldFilterPresetsPlugin extends Plugin
 
 	private void select(String id)
 	{
-		if (prompts.pending() || repository.selected().equals(id)) { return; }
-		leave(() -> { repository.select(id); refresh(); });
+		client.playSoundEffect(2266);
+		if (prompts.pending()) { return; }
+		int request = ++selectionRequest;
+		if (repository.selected().equals(id)) { return; }
+		PresetRepository current = repository;
+		leave(() -> nextTick(() ->
+		{
+			if (selectionRequest == request && repository == current
+				&& (PresetRepository.CLIENT.equals(id) || PresetRepository.NONE.equals(id) || repository.find(id) != null))
+			{ repository.select(id); refresh(); }
+		}));
+	}
+
+	private void nextTick(Runnable action) { nextTickActions.add(action); }
+
+	@Subscribe
+	public void onGameTick(GameTick event)
+	{
+		List<Runnable> actions = new ArrayList<>(nextTickActions);
+		nextTickActions.clear();
+		if (running && supported) { actions.forEach(Runnable::run); }
+		if (running && supported && dropdown != null) { dropdown.gameTick(); }
 	}
 
 	private void leave(Runnable change)
@@ -244,6 +273,42 @@ public class WorldFilterPresetsPlugin extends Plugin
 			input.option(option, () -> finish(ticket, "Yes".equals(option) ? yes : () -> { }));
 		}
 		input.onClose(() -> prompts.close(ticket)).build();
+	}
+
+	private void confirmUpdateFromInGame(String id)
+	{
+		restoreScope();
+		long ticket = prompts.begin();
+		previewTicket = ticket;
+		previewingInGameFilters = true;
+		refresh();
+		int generation = session;
+		chatbox.openTextMenuInput("Update this preset with the current in-game settings?")
+			.option("Yes", () -> finish(ticket, () ->
+			{
+				updateFromInGame(id);
+				endInGamePreview(ticket);
+			}))
+			.option("No", () -> finish(ticket, () -> endInGamePreview(ticket)))
+			.onClose(() -> { prompts.close(ticket); dispatch(generation, () -> endInGamePreview(ticket)); }).build();
+	}
+
+	private void updateFromInGame(String id)
+	{
+		Preset preset = repository.find(id);
+		if (preset == null) { return; }
+		int[] filters = readFilters();
+		repository.update(preset.withFilters(filters));
+		if (id.equals(repository.selected())) { repository.edit(filters); }
+	}
+
+	private void endInGamePreview(long ticket)
+	{
+		if (previewingInGameFilters && previewTicket == ticket)
+		{
+			previewingInGameFilters = false;
+			refresh();
+		}
 	}
 
 	private void nameInput(String title, String initial, String exceptId, java.util.function.Consumer<String> done)
@@ -318,7 +383,7 @@ public class WorldFilterPresetsPlugin extends Plugin
 	@Subscribe
 	public void onScriptPreFired(ScriptPreFired event)
 	{
-		if (!running || !supported || scopedScript != -1)
+		if (!running || !supported || previewingInGameFilters || scopedScript != -1)
 		{
 			return;
 		}
@@ -485,7 +550,7 @@ public class WorldFilterPresetsPlugin extends Plugin
 	@Subscribe
 	public void onMenuOptionClicked(MenuOptionClicked event)
 	{
-		if (!running || !supported || repository.working() == null || event.getId() != 1
+		if (!running || !supported || previewingInGameFilters || repository.working() == null || event.getId() != 1
 			|| event.getMenuAction() != MenuAction.CC_OP)
 		{
 			return;
@@ -573,6 +638,7 @@ public class WorldFilterPresetsPlugin extends Plugin
 				public void add() { addPreset(); }
 				public void manage(String id, int op) { managePreset(id, op); }
 				public void bulk(int op) { bulkAction(op); }
+				public void nextTick(Runnable action) { WorldFilterPresetsPlugin.this.nextTick(action); }
 			});
 		}
 		dropdown.update(repository, settings.hideInGameFilter(), settings.hideNoFilters());
@@ -605,7 +671,7 @@ public class WorldFilterPresetsPlugin extends Plugin
 		if (preset == null) { return; }
 		switch (op)
 		{
-			case 2: save(id); break;
+			case 2: confirmUpdateFromInGame(id); break;
 			case 3:
 				nameInput("Preset name (up to 80 characters)", preset.name, id, value ->
 				{ Preset current = repository.find(id); if (current != null) { repository.update(current.withName(value)); updateHeader(); } });
@@ -639,8 +705,14 @@ public class WorldFilterPresetsPlugin extends Plugin
 
 	private void exportPresets(List<Preset> presets)
 	{
-		try { clipboard.write(codec.export(presets)); message("Copied " + presets.size() + " preset(s) to clipboard."); }
-		catch (RuntimeException ex) { message("Unable to access the clipboard. Please try again."); }
+		try { clipboard.write(codec.export(presets)); }
+		catch (RuntimeException ex) { message("Unable to access the clipboard. Please try again."); return; }
+		String text = presets.size() == 1 ? "Copied '" + escaped(presets.get(0).name) + "' to clipboard"
+			: "Copied " + presets.size() + " presets to clipboard";
+		long ticket = prompts.begin();
+		chatbox.openTextMenuInput(text)
+			.option("Click to continue", () -> finish(ticket, () -> { }))
+			.onClose(() -> prompts.close(ticket)).build();
 	}
 
 	private void importPresets()
@@ -713,9 +785,14 @@ public class WorldFilterPresetsPlugin extends Plugin
 		for (int i = start; i < end; i++)
 		{
 			String id = ids.get(i);
-			menu.createMenuEntry(index).setOption("Load preset").setTarget(escaped(repository.name(id)))
-				.setType(MenuAction.RUNELITE).onClick(entry -> dispatch(generation, () ->
-				{ if (dropdown != null) { dropdown.close(); } select(id); }));
+			String target = escaped(repository.name(id));
+			if (id.equals(repository.selected())) { target = "<col=ffff00>" + target + "*</col>"; }
+			menu.createMenuEntry(index).setOption("Use").setTarget(target)
+				.setType(MenuAction.RUNELITE).onClick(entry ->
+				{
+					if (running && generation == session)
+					{ if (dropdown != null) { dropdown.close(); } select(id); }
+				});
 		}
 		if (end < ids.size())
 		{
@@ -726,11 +803,17 @@ public class WorldFilterPresetsPlugin extends Plugin
 
 	private void useIcon(String id)
 	{
+		PresetDropdown currentDropdown = dropdown;
+		if (currentDropdown != null) { currentDropdown.holdOpen(); }
 		long ticket = prompts.begin();
 		new PresetItemSearch(chatbox, clientThread, client, items, icon -> finish(ticket, () ->
 		{
 			Preset current = repository.find(id);
 			if (current != null) { repository.update(current.withIcon(icon)); updateHeader(); }
-		})).onClose(() -> prompts.close(ticket)).build();
+		})).onClose(() ->
+		{
+			prompts.close(ticket);
+			if (currentDropdown != null) { currentDropdown.releaseOpen(); }
+		}).build();
 	}
 }

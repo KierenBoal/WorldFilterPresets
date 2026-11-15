@@ -17,13 +17,15 @@ import java.util.UUID;
 final class PresetCodec
 {
 	private static final Gson JSON = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
+	private static final Gson COMPACT_JSON = new GsonBuilder().disableHtmlEscaping().create();
 	private static final String FORMAT = "world-filter-presets";
+	private static final String EXPORT_VERSION = "wfp-1";
 	private static final String[] MASK_NAMES = {"member", "country", "theme"};
 	// Character positions 0..7 map to varcs 1157..1161, 212, 1162, 1163.
 	// Position 5 deliberately uses legacy varc 212, NOT varc 1162.
 	static final int SEARCH_LENGTH = 8;
 
-	String export(List<Preset> presets) { return JSON.toJson(envelope(presets, false)); }
+	String export(List<Preset> presets) { return COMPACT_JSON.toJson(envelope(presets, false)); }
 
 	boolean sameContent(Preset first, Preset second)
 	{
@@ -46,7 +48,7 @@ final class PresetCodec
 
 	List<Preset> importPresets(String text)
 	{
-		List<Preset> result = decode(root(text), false);
+		List<Preset> result = decode(root(text, false), false);
 		if (result.isEmpty()) { throw invalid("The clipboard contains no presets."); }
 		return result;
 	}
@@ -54,7 +56,7 @@ final class PresetCodec
 	Stored load(String text)
 	{
 		if (text == null || text.isBlank()) { return new Stored(new ArrayList<>(), PresetRepository.CLIENT, new ArrayList<>(), new ArrayList<>()); }
-		JsonObject root = root(text);
+		JsonObject root = root(text, true);
 		String selected = root.has("selected") ? string(root.get("selected"), "selected") : PresetRepository.CLIENT;
 		return new Stored(decode(root, true), selected, strings(root, "order"), strings(root, "hiddenFromCog"));
 	}
@@ -62,8 +64,12 @@ final class PresetCodec
 	private JsonObject envelope(List<Preset> presets, boolean internal)
 	{
 		JsonObject root = new JsonObject();
-		root.addProperty("format", FORMAT);
-		root.addProperty("version", 1);
+		if (internal)
+		{
+			root.addProperty("format", FORMAT);
+			root.addProperty("version", 1);
+		}
+		else { root.addProperty("v", EXPORT_VERSION); }
 		JsonArray array = new JsonArray();
 		for (Preset preset : presets) { array.add(encodePreset(preset, internal)); }
 		root.add("presets", array);
@@ -124,7 +130,7 @@ final class PresetCodec
 		return result;
 	}
 
-	private JsonObject root(String text)
+	private JsonObject root(String text, boolean internal)
 	{
 		try
 		{
@@ -132,8 +138,13 @@ final class PresetCodec
 			reader.setLenient(false);
 			JsonObject root = object(Streams.parse(reader), "document");
 			if (reader.peek() != JsonToken.END_DOCUMENT) { throw invalid("Unexpected content after preset JSON."); }
-			if (!FORMAT.equals(string(root.get("format"), "format"))) { throw invalid("This is not a World Filter Presets export."); }
-			if (integer(root.get("version"), "version") != 1) { throw invalid("Unsupported preset format version."); }
+			if (internal)
+			{
+				if (!FORMAT.equals(string(root.get("format"), "format"))) { throw invalid("This is not World Filter Presets data."); }
+				if (integer(root.get("version"), "version") != 1) { throw invalid("Unsupported preset format version."); }
+			}
+			else if (!EXPORT_VERSION.equals(string(root.get("v"), "v")))
+			{ throw invalid("Unsupported World Filter Presets export format or version."); }
 			return root;
 		}
 		catch (JsonParseException | IOException | NullPointerException ex) { throw invalid("Invalid preset JSON."); }

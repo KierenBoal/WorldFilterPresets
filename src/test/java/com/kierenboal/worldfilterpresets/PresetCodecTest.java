@@ -12,9 +12,31 @@ public class PresetCodecTest
 	private final PresetCodec codec = new PresetCodec();
 	private String wrap(String presets)
 	{
-		return "{\"format\":\"world-filter-presets\",\"version\":1,\"presets\":" + presets + "}";
+		return "{\"v\":\"wfp-1\",\"presets\":" + presets + "}";
 	}
 	private JsonObject json(String text) { return new JsonParser().parse(text).getAsJsonObject(); }
+
+	@Test
+	public void exportUsesCompactJsonAndPreservesSpacesInNames()
+	{
+		PresetRepository state = new PresetRepository(codec, null, ignored -> { });
+		int[] filters = new int[11]; filters[1] = 1503;
+		Preset preset = state.add("Aussie Only", filters).withIcon(2132);
+		assertEquals("{\"v\":\"wfp-1\",\"presets\":[{\"name\":\"Aussie Only\",\"icon\":2132,\"filters\":{\"country\":1503}}]}",
+			codec.export(Collections.singletonList(preset)));
+	}
+
+	@Test
+	public void importsCompactVersionAndKeepsExistingLocalStorageReadable()
+	{
+		Preset imported = codec.importPresets("{\"v\":\"wfp-1\",\"presets\":[{\"name\":\"Aussie Only\",\"icon\":2132,\"filters\":{\"country\":1503}}]}").get(0);
+		assertEquals(2132, imported.icon);
+		assertEquals(1503, imported.filters()[1]);
+		String stored = codec.store(Collections.singletonList(imported), imported.id);
+		assertEquals("world-filter-presets", json(stored).get("format").getAsString());
+		assertEquals(1, json(stored).get("version").getAsInt());
+		assertEquals("Aussie Only", codec.load(stored).presets.get(0).name);
+	}
 
 	@Test
 	public void roundTripsSingleAndBulkWithoutInternalState()
@@ -24,6 +46,9 @@ public class PresetCodecTest
 		Preset first = state.add("A: <B>", values).withIcon(4151);
 		Preset second = state.add("Second", new int[11]);
 		String export = codec.export(Arrays.asList(first, second));
+		assertEquals("wfp-1", json(export).get("v").getAsString());
+		assertFalse(json(export).has("format"));
+		assertFalse(json(export).has("version"));
 		assertFalse(export.contains("\"selected\""));
 		assertFalse(export.contains("\"id\""));
 		List<Preset> restored = codec.importPresets(export);
@@ -70,7 +95,8 @@ public class PresetCodecTest
 			wrap("[{\"name\":\"X\",\"filters\":{\"search\":[65536]}}]"), wrap("[{\"name\":\"X\",\"filters\":{\"search\":[null]}}]"),
 			wrap("[{\"name\":\"" + "x".repeat(81) + "\"}]"), wrap("[{\"name\":\"line\\nfeed\"}]"),
 			wrap("[{\"name\":\"Valid\"},{}]"), wrap("[{\"name\":\"X\"}]") + " trailing",
-			"{format:'world-filter-presets',version:1,presets:[{name:'X'}]}"))
+			"{v:'wfp-1',presets:[{name:'X'}]}",
+			"{\"format\":\"world-filter-presets\",\"version\":1,\"presets\":[{\"name\":\"X\"}]}"))
 		{
 			try { codec.importPresets(value); fail("Accepted invalid payload: " + value); }
 			catch (IllegalArgumentException expected) { assertNotNull(expected.getMessage()); }
@@ -121,8 +147,9 @@ public class PresetCodecTest
 	@Test
 	public void rejectsUnsupportedVersionAndWrongFormat()
 	{
-		for (String value : Arrays.asList(wrap("[{\"name\":\"X\"}]").replace("\"version\":1", "\"version\":2"),
-			wrap("[{\"name\":\"X\"}]").replace("world-filter-presets", "other-plugin")))
+		for (String value : Arrays.asList(wrap("[{\"name\":\"X\"}]").replace("wfp-1", "wfp-2"),
+			wrap("[{\"name\":\"X\"}]").replace("wfp-1", "other-plugin-1"),
+			wrap("[{\"name\":\"X\"}]").replace("\"wfp-1\"", "1")))
 		{
 			try { codec.importPresets(value); fail(); }
 			catch (IllegalArgumentException expected) { assertNotNull(expected.getMessage()); }

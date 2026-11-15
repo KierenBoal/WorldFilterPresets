@@ -1,48 +1,53 @@
+![image](https://img.shields.io/endpoint?url=https://api.runelite.net/pluginhub/shields/rank/plugin/world-filter-presets)
+![image](https://img.shields.io/endpoint?url=https://api.runelite.net/pluginhub/shields/installs/plugin/world-filter-presets)
+
 # World Filter Presets
 
-A RuneLite plugin for creating and reusing presets for world-list filters.
+![Quick access to presets from the world hopper cog](md_images/easy_quick_access.jpg)
 
-Open the world-switcher configuration to use the preset dropdown. **In-game filter** uses your
-normal client settings; **No filters** temporarily shows all worlds. **+ Add new** saves the
-current filters and searches under a unique name. Names are matched without regard to letter case.
+Ever find yourself changing your world filters for one thing, then changing them all back again afterwards? World Filter Presets lets you save those filters and swap between them whenever you want, nice and easy.
 
-Right-click a preset to save, rename, choose an inventory item icon, export, or delete it.
-Every entry, including the protected built-ins, supports **Move up**, **Move down**, and
-**Show in cog menu**. The cog shortcuts follow that same order. Hiding a built-in from the
-dropdown in plugin configuration does not hide its cog shortcut.
+To configure, open the `Configure World Switcher` popup and use the custom dropdown to pick a preset, or click **+ Add new** to save your current filters as a new one. **In-game filter** takes you back to your normal in-game filters.
 
-Right-click the dropdown header, even while expanded, to import from the clipboard,
-export all custom presets, or delete all custom presets. Bulk deletion requires two confirmations.
-When switching away from an edited preset, choose Save, Discard, or Cancel.
+You can also quickly swap presets straight from the world hopper by right-clicking the cog, so you don't even need to open the menu to swap!
+
+## Presets for whatever activity you're doing
+
+You can add as many presets as you want, mix and match filters and search terms. Here are some examples:
+
+- **No filters** shows all worlds. Super handy when you just want to quickly swap between your current filter and the full world list.
+- **Themed worlds** remembers search terms, so you can filter by activity.
+
+![GOTR preset with its saved search](md_images/world_preset_gotr.jpg)
+
+- **Region worlds** remembers your selected region filters, so you can easily show only the low-ping regions.
+
+![Aussie Only preset showing Australian worlds](md_images/world_preset_aussie.jpg)
+
+## Custom preset names and icons
+
+Give each preset a name up to **80 characters** long, and even optionally choose an in-game item icon to show alongside it. Makes it a bit easier to spot the preset you're looking for at a glance!
+
+Hover or right-click a preset to rename it, change its icon, move it up or down, or choose whether it shows up in the cog menu.
 
 ## Sharing presets
 
-Exports contain custom presets in their relative order, without local IDs or absolute positions.
-Imports append new names and ask before overwriting existing names with changed content.
-An overwrite retains the existing position and selection and applies the imported filters.
-Identical presets are skipped with a red chat message.
+Got a filter you want to share with a mate? Just like tile markers, you can copy a preset to your clipboard and send it over. They can then import it from their clipboard, nice and easy. (Yes it asks if you want to import, and confirms replacements if you re-import something that already exists but is slightly different)
 
-The readable version 1 JSON format omits defaults. A minimal export is:
+Right-click a preset and choose **Export to clipboard** to copy one, or right-click the dropdown and choose **Export all presets** to copy all of your custom presets. To import one or many presets, copy the shared text and choose **Import from clipboard** on the dropdown.
+
+![World filter preset dropdown](md_images/world_preset_drop_down.jpg)
+
+The format is Here's a simple **Aussie Only** preset you can copy and import:
 
 ```json
-{
-  "format": "world-filter-presets",
-  "version": 1,
-  "presets": [{ "name": "All worlds" }]
-}
+{"v":"wfp-1","presets":[{"name":"Aussie Only","icon":2132,"filters":{"country": 1503}}]}
 ```
 
-Optional preset fields are `icon` (item ID), `showInCogMenu` (defaults to true), and `filters`.
-Filter fields `member`, `country`, and `theme` default to zero. `search` contains up to eight
-character values with omitted trailing positions defaulting to zero. Unknown preset and filter
-fields are retained for forward compatibility. Built-ins and their preferences stay local.
+---
 
-## Development
+## AI usage
 
-Requires JDK 11 or newer.
+I want to acknowledge and disclose the use of AI agentic engineering in creating this plugin. 
 
-Run the development client on Windows with `.\gradlew.bat run`, or on macOS/Linux with `./gradlew run`.
-
-Run the tests and build with `.\gradlew.bat test build`. Tests cover storage, import reconciliation,
-ordering, cog menus, and native widget construction. Live fixed/resizable layout and Stretched Mode
-checks require a logged-in client.
+The code was written using OpenAI's Codex with **GPT-6.1 Sol** and **GPT-6.1 Terra**.
